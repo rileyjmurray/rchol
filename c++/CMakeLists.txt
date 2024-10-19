@@ -56,22 +56,13 @@ install(EXPORT RCholTargets
 # Executables
 #############################################
 
-set(DRIVER_SOURCES "ex_laplace.cpp")
-list(APPEND DRIVER_SOURCES ${ALL_RChol_LIBRARY_SOURCES})
-list(REMOVE_ITEM DRIVER_SOURCES 
-    "${CMAKE_CURRENT_SOURCE_DIR}/rchol/find_separator.cpp" 
-    "${CMAKE_CURRENT_SOURCE_DIR}/rchol/rchol_parallel.cpp"
-)
-
-add_executable(driver ${DRIVER_SOURCES})
+add_executable(driver ex_laplace.cpp)
 target_compile_options(driver PRIVATE -Wall -O3)
 target_link_libraries(driver RChol)
 
 # Check for METIS for driver_parallel
 if(DEFINED METIS_INC AND DEFINED METIS_LIB)
-    set(DRIVER_PARALLEL_SOURCES "ex_laplace_parallel.cpp")
-    list(APPEND DRIVER_PARALLEL_SOURCES ${ALL_RChol_LIBRARY_SOURCES})
-    add_executable(driver_parallel ${DRIVER_PARALLEL_SOURCES})
+    add_executable(driver_parallel ex_laplace_parallel.cpp)
     target_compile_options(driver_parallel PRIVATE -Wall -O3)
     target_link_libraries(driver_parallel RChol)
 else()
