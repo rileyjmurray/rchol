@@ -8,9 +8,19 @@ spack load gcc@12.3
 spack load intel-tbb
 spack load metis
 spack load intel-oneapi-compilers
-export CPATH=~/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/gcc-12.3.0-oshnrnhi6bn7jacta7jjdsgmtndsirse/lib/gcc/x86_64-pc-linux-gnu/12.3.0/include/:$CPATH
-export CPATH=~/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/gcc-12.3.0-oshnrnhi6bn7jacta7jjdsgmtndsirse/lib/gcc/x86_64-pc-linux-gnu/12.3.0/include-fixed/:$CPATH
 source $MKLROOT/../../setvars.sh
+
+export SPACK_GCC_HOME=~/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/gcc-12.3.0-oshnrnhi6bn7jacta7jjdsgmtndsirse
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${SPACK_GCC_HOME}/lib64/
+export CPATH=${SPACK_GCC_HOME}/lib/gcc/x86_64-pc-linux-gnu/12.3.0/include/:$CPATH
+export CPATH=${SPACK_GCC_HOME}/lib/gcc/x86_64-pc-linux-gnu/12.3.0/include-fixed/:$CPATH
+
+# Notes about updates to environment variables
+#   1. The LD_LIBRARY_PATH update was because of a runtime error along the lines of 
+#       "/lib64/libstdc++.so.6: version `CXXABI_1.3.13' not found"
+#   2. Not sure if loading gcc@12.3 should be strictly necessary, since now we use ICC.
+#      The CPATH and LD_LIBRARY_PATH updates above probably have analogs for ICC.
+#
 
 ------------------------------------------------------------------------------------------------------------------------------------------
 
