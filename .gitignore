@@ -5,6 +5,8 @@
 *.o
 bak/*
 *.bak
+c++/driver
+c++/driver_parallel
 
 driver
 driver_parallel
