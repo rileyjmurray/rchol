@@ -9,31 +9,24 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #############################################
 
 file(GLOB_RECURSE ALL_RChol_LIBRARY_SOURCES "sparse.cpp" "rchol/*.cpp" "rchol_lap/*.cpp" "util/*.cpp")
-include_directories(rchol rchol_lap util)
 
-# Add TBB malloc proxy if TBBROOT is defined
-if(DEFINED TBBROOT)
-    link_directories(${TBBROOT}/lib/intel64/gcc4.8/)
-    set(TBB_MALLOC_PROXY_LIBRARIES tbbmalloc_proxy)
-endif()
-
-# Define the RChol library
 add_library(RChol STATIC ${ALL_RChol_LIBRARY_SOURCES})  # Change to SHARED if you want a shared library
-
-# Link necessary libraries to RChol
-target_link_libraries(RChol PUBLIC ${TBB_MALLOC_PROXY_LIBRARIES} mkl_intel_ilp64 mkl_tbb_thread mkl_core pthread m dl)
+if(DEFINED TBBROOT)
+    target_link_directories(RChol PUBLIC ${TBBROOT}/lib/intel64/gcc4.8/)
+endif()
+target_include_directories(RChol PUBLIC 
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rchol>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rchol_lap>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/util>
+)
+target_link_libraries(RChol PUBLIC mkl_intel_ilp64 mkl_tbb_thread mkl_core pthread m dl)
 
 # Check for METIS
 if(DEFINED METIS_INC AND DEFINED METIS_LIB)
-    message(STATUS "METIS found. Including directories and linking libraries.")
-    include_directories(${METIS_INC})
-    link_directories(${METIS_LIB})
-    
-    # Find the METIS library
+    message(STATUS "METIS paths specified. Including directories and linking libraries.")
     find_library(METIS_LIBRARIES NAMES metis PATHS ${METIS_LIB} NO_DEFAULT_PATH)
-
-    # Link METIS to RChol
     target_link_libraries(RChol PUBLIC ${METIS_LIBRARIES})
+    target_include_directories(RChol PUBLIC ${METIS_INC})
 else()
     message(WARNING "METIS not found. RChol will not link against METIS.")
 endif()
@@ -50,6 +43,16 @@ install(EXPORT RCholTargets
     FILE RCholTargets.cmake
     NAMESPACE RChol::
     DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/cmake/RChol
+)
+
+file(GLOB_RECURSE HEADER_FILES 
+    "${CMAKE_CURRENT_SOURCE_DIR}/rchol/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/rchol_lap/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/util/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/sparse.hpp"
+)
+install(FILES ${HEADER_FILES}
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/include/RChol
 )
 
 #############################################
