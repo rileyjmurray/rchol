@@ -169,7 +169,6 @@ void clear_memory(std::vector<edges> &lap, std::vector<int> &partition,
     
 }
 
-
 std::vector<Edge_info> & 
 recursive_calculation(std::vector<int> &partition, int depth, std::vector<edges> &lap, 
     real *diagpt, int start, int total_size, int target, int core_begin, int core_end)
@@ -394,15 +393,217 @@ real random_sampling(edges *cur, std::vector<edges> &lap, int curcol,
     
     if (nz > 2)
     {
+
+        int size = nz - 1;
+
+        // create sample vector for sampling
+        // Sample sample[size];
+        std::vector<Sample> sample_vec(size);
+        auto sample = sample_vec.data();
+        // cumulative sum
+        std::vector<real> cumsum_vec(size);
+        auto cumsum = cumsum_vec.data();
+        real csum = 0.0;
+        for (size_t i = 0; i < size; i++)
+        {
+            sample[i].row = row[i + 1];
+            sample[i].data = data[i + 1];
+        }
+
+        // sort first based on value
+        std::sort(sample, sample + size, compare);
+        for (size_t i = 0; i < size; i++)
+        {
+            csum += sample[i].data;
+            cumsum[i] = csum;
+        }
+        
+        
+        // sampling
+        // random number and edge values
+        static thread_local std::mt19937 gen(std::random_device{}());
+        static thread_local std::mt19937 gen_discrete;
+        int num_sample = (size - 1);
+        for (int i = 0; i < num_sample; i++)
+        {
+            // sample based on discrete uniform
+            std::uniform_int_distribution<int> discrete_dis(0, size - 2);
+            int uniform = discrete_dis(gen_discrete);
+
+            // sample based on weight
+            std::uniform_real_distribution<> uniform_dis(0.0, 1.0);
+            double tar = cumsum[uniform];
+            double search_num = uniform_dis(gen) * (csum - tar) + tar;
+            double *weight = std::lower_bound (cumsum + uniform, cumsum + size, search_num);
+
+            
+            
+            // edge weight
+            size_t minl = std::min(sample[weight - cumsum].row, sample[uniform].row);
+            size_t maxl = std::max(sample[weight - cumsum].row, sample[uniform].row);
+
+            // if(uniform > size - 1 || (weight - cumsum) > size - 1)
+            // {
+
+            //     std::cout << "uniform: " << uniform << "\n";
+            //     std::cout << "prev: " << cumsum[size - 2] << "\n";
+            //     std::cout << "last: " << sample[size - 1].data << "\n";
+            //     std::cout << "other: " << cumsum[size - 1] << "\n";
+            //     std::cout << "search: " << search_num << "\n";
+            //     std::cout << "size: " << size << "\n";
+            //     assert(cumsum[size - 1] < search_num);
+            //     assert(false);
+            // }
+            
+
+            double setval = sample[uniform].data * (csum - cumsum[uniform]) / csum * (double)(size - 1) / (double)(num_sample);
+            if(minl >= l_bound && minl < r_bound)
+            {
+                gsl_spmatrix_set(lap.at(minl), maxl, 0, setval);
+            }
+            else
+            {
+                sep_edge.push_back(Edge_info(setval, maxl, minl));
+            }
+            
+        }
+        
+        
+    }
+    else
+    {
+        if(nz == 1)
+            sum = -data[0];
+    }
+       
+    
+    // update column
+    gsl_spmatrix_scale(cur, 1.0 / sum);
+    cur->data[0] = 1.0;
+    
+    return sum;
+}
+
+
+
+double random_sampling1(gsl_spmatrix *cur, std::vector<gsl_spmatrix *> &lap, size_t curcol, std::vector<Edge_info> &sep_edge, size_t l_bound, size_t r_bound)
+{
+
+    double *data = cur->data;
+    size_t *row = cur->i;
+    double sum = 0.0;
+    size_t nz = cur->nz;
+    // find sum of column
+    for (size_t i = 1; i < nz; i++)
+    {
+        sum += data[i];
+    }
+    // run only if at least 3 elements, including diagonal
+
+    
+    if (nz > 2)
+    {
         
         int size = nz - 1;
 
         // create sample vector for sampling
-        Sample sample[size];
+        // Sample sample[size];
+        std::vector<Sample> sample_vec(size);
+        auto sample = sample_vec.data();
         // cumulative sum
-        real cumsum[size];
-        real csum = 0.0;
-        for (int i = 0; i < size; i++)
+        // double cumsum[size];
+        std::vector<double> cumsum_vec(size);
+        auto cumsum = cumsum_vec.data();
+        double csum = 0.0;
+        for (size_t i = 0; i < size; i++)
+        {
+            sample[i].row = row[i + 1];
+            sample[i].data = data[i + 1];
+            csum += data[i + 1];
+            cumsum[i] = csum;
+        }
+        
+        
+        // sampling
+        // random number and edge values
+        static thread_local std::mt19937 gen(std::random_device{}());
+        int num_sample = size;
+        for (int i = 0; i < num_sample; i++)
+        {
+            // sample 1 based on weight
+            std::uniform_real_distribution<> uniform_dis(0.0, csum);
+            double *weight1 = std::lower_bound (cumsum, cumsum + size, uniform_dis(gen));
+
+            // sample 2 based on weight
+            double *weight2 = std::lower_bound (cumsum, cumsum + size, uniform_dis(gen));
+            
+            // edge weight
+            size_t minl = std::min(sample[weight1 - cumsum].row, sample[weight2 - cumsum].row);
+            size_t maxl = std::max(sample[weight1 - cumsum].row, sample[weight2 - cumsum].row);
+
+            if (minl == maxl)
+                continue;
+
+            if(minl >= l_bound && minl < r_bound)
+            {
+                
+                gsl_spmatrix_set(lap.at(minl), maxl, 0, csum / double((2 * num_sample)));
+            }
+            else
+            {
+                sep_edge.push_back(Edge_info(csum / double((2 * num_sample)), maxl, minl));
+            }
+            
+        }
+        
+        
+    }
+    else
+    {
+        if(nz == 1)
+           sum = -data[0];
+    }
+      
+
+
+    // update column
+    gsl_spmatrix_scale(cur, 1.0 / sum);
+    cur->data[0] = 1.0;
+    
+    return sum;
+}
+
+double random_sampling0(gsl_spmatrix *cur, std::vector<gsl_spmatrix *> &lap, size_t curcol, std::vector<Edge_info> &sep_edge, size_t l_bound, size_t r_bound)
+{
+
+    double *data = cur->data;
+    size_t *row = cur->i;
+    double sum = 0.0;
+    size_t nz = cur->nz;
+    // find sum of column
+    for (size_t i = 1; i < nz; i++)
+    {
+        sum += data[i];
+    }
+    // run only if at least 3 elements, including diagonal
+
+    
+    if (nz > 2)
+    {
+        
+        int size = nz - 1;
+
+        // create sample vector for sampling
+        // Sample sample[size];
+        std::vector<Sample> sample_vec(size);
+        auto sample = sample_vec.data();
+        // cumulative sum
+        // double cumsum[size];
+        std::vector<double> cumsum_vec(size);
+        auto cumsum = cumsum_vec.data();
+        double csum = 0.0;
+        for (size_t i = 0; i < size; i++)
+>>>>>>> 00b720c (resolve compiler warnings about dynamically sized arrays by switching to std::vector)
         {
             sample[i].row = row[i + 1];
             sample[i].data = data[i + 1];
@@ -456,9 +657,10 @@ real random_sampling(edges *cur, std::vector<edges> &lap, int curcol,
 void linear_update(edges *b)
 {
     // sort
-    int size = b->nz;
-    Sample sample[size];
-    for (int i = 0; i < size; i++)
+    size_t size = b->nz;
+    std::vector<Sample> sample_vec(size);
+    auto sample = sample_vec.data();
+    for (size_t i = 0; i < size; i++)
     {
         sample[i].row = b->i[i];
         sample[i].data = b->data[i];
