@@ -12,14 +12,15 @@ file(GLOB_RECURSE ALL_RChol_LIBRARY_SOURCES "sparse.cpp" "rchol/*.cpp" "rchol_la
 
 add_library(RChol STATIC ${ALL_RChol_LIBRARY_SOURCES})  # Change to SHARED if you want a shared library
 if(DEFINED TBBROOT)
-    target_link_directories(RChol PUBLIC ${TBBROOT}/lib/intel64/gcc4.8/)
+    target_link_directories(RChol PRIVATE ${TBBROOT}/lib/intel64/gcc4.8/)
 endif()
 target_include_directories(RChol PUBLIC 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rchol>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rchol_lap>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/util>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 )
-target_link_libraries(RChol PUBLIC mkl_intel_ilp64 mkl_tbb_thread mkl_core pthread m dl)
+target_link_libraries(RChol PRIVATE mkl_intel_ilp64 mkl_tbb_thread mkl_core pthread m dl)
 
 # Check for METIS
 if(DEFINED METIS_INC AND DEFINED METIS_LIB)
@@ -53,6 +54,26 @@ file(GLOB_RECURSE HEADER_FILES
 )
 install(FILES ${HEADER_FILES}
     DESTINATION ${CMAKE_INSTALL_PREFIX}/include/RChol
+)
+
+include(CMakePackageConfigHelpers)
+
+# Set the installation directory for the config files
+set(RChol_CONFIG_DIR "${CMAKE_INSTALL_PREFIX}/lib/cmake/RChol")
+
+# Configure the package config file
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/RCholConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/RCholConfig.cmake"
+    INSTALL_DESTINATION "${RChol_CONFIG_DIR}"
+    NO_SET_AND_CHECK_MACRO
+    NO_CHECK_REQUIRED_COMPONENTS_MACRO
+)
+
+# Install the config file
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/RCholConfig.cmake"
+    DESTINATION "${RChol_CONFIG_DIR}"
 )
 
 #############################################

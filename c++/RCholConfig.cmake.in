@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Include the target and include directories
+include("${CMAKE_CURRENT_LIST_DIR}/RCholTargets.cmake")
+
+# Set the include directories
+set(RChol_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../../include/RChol")
+include_directories(${RChol_INCLUDE_DIRS})
