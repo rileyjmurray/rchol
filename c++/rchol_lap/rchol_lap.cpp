@@ -280,25 +280,29 @@ recursive_calculation(std::vector<int> &partition, int depth, std::vector<edges>
 
         /* separator portion */
         time_s = std::chrono::steady_clock::now();
-        for (int i = partition.at(start + total_size - 1); i < partition.at(start + total_size); i++)
-        {
-            
+        for (int i = partition.at(start + total_size - 1); i < partition.at(start + total_size); i++) {            
             int current = i;
             edges *b = &lap.at(current);
             if(b->nz - b->split > 0)
             {
-                
                 linear_update(b);
             }
-
-            
-            diagpt[current] = random_sampling(&lap.at(current), lap, current, sep_edges, l_bound, r_bound);
-            //density += lap.at(i)->nz;
+            diagpt[current] = random_sampling0(lap.at(current), lap, current, sep_edge, l_bound, r_bound);
+            density += lap.at(i)->nz;
         }
-        time_e = std::chrono::steady_clock::now();
-        elapsed = time_e - time_s;
-        //int cpu_num = sched_getcpu();
-        //std::cout << "depth(separator): " << depth << " thread " << std::this_thread::get_id() << " cpu: " << cpu_num  << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << " length: " << partition.at(start + total_size) - partition.at(start + total_size - 1) << " nztotal " << density << " before: " << before_density / (partition.at(start + total_size) - partition.at(start + total_size - 1)) << " density: " << density / (partition.at(start + total_size) - partition.at(start + total_size - 1)) << "\n";
+        // time_e = std::chrono::steady_clock::now();
+        // elapsed = time_e - time_s;
+        // int cpu_num = sched_getcpu();
+        // std::cout 
+        //     <<  "depth(separator): " << depth 
+        //     << " thread " << std::this_thread::get_id() 
+        //     << " cpu: " << cpu_num 
+        //     << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()
+        //     << " length: " << result_idx.at(start + total_size) - result_idx.at(start + total_size - 1) 
+        //     << " nztotal " << density 
+        //     << " before: " << before_density / (result_idx.at(start + total_size) - result_idx.at(start + total_size - 1)) 
+        //     << " density: " << density / (result_idx.at(start + total_size) - result_idx.at(start + total_size - 1)) << "\n";
+
 		
         return sep_edges;
     }
