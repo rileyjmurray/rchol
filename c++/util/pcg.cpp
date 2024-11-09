@@ -1,27 +1,47 @@
 #include "pcg.hpp"
 
-#define MKL_INT size_t
-#include "mkl_spblas.h"
-#include "mkl.h"
-#include "mkl_types.h"
-
-typedef sparse_matrix_t SpMat;
-
 #include <iostream>
-#include <chrono>
+#include <cassert>
+#include <cmath>
+#include <future>
+#include <algorithm>
 
-
-pcg::pcg(const SparseCSR &A, const std::vector<double> &b, double tol, int maxit,
+pcg::pcg(const SparseCSR &A, const std::vector<double> &b, 
+    const std::vector<int> &S, int nt, double tol, int maxit,
     const SparseCSR &G, std::vector<double> &x, double &relres, int &itr) {
 
-  this->ps = A.N;
+  std::cout<<"MKL threads: "<<mkl_get_max_threads()<<std::endl;
+  std::cout<<"Sparse solve threads: "<<S.size()/2<<std::endl;
+
+  this->G = G; //this->transpose();
+  this->S = S; this->S.back()--; // remove artifitial vertex
+  this->nThreads = nt;
+
+  this->N = A.N;
   this->tolerance = tol;
   this->maxSteps = maxit;
 
   SpMat Amat, Gmat;
   create_sparse(A.N, A.rowPtr, A.colIdx, A.val, Amat);
   create_sparse(G.N, G.rowPtr, G.colIdx, G.val, Gmat);
+
+  mkl_sparse_optimize(Amat);
+  mkl_sparse_optimize(Gmat);
+  
+  // matrix descr for A
+  MDA.type = SPARSE_MATRIX_TYPE_GENERAL;
+  //MDA.type = SPARSE_MATRIX_TYPE_SYMMETRIC;
+  //MDA.mode = SPARSE_FILL_MODE_UPPER;
+  //MDA.diag = SPARSE_DIAG_NON_UNIT;
+
+  // matrix descr for G
+  MDG.type = SPARSE_MATRIX_TYPE_TRIANGULAR;
+  MDG.mode = SPARSE_FILL_MODE_UPPER;
+  MDG.diag = SPARSE_DIAG_NON_UNIT;
+
+  Timer t; t.start();
   this->iteration(&Amat, b.data(), &Gmat, x, relres, itr);
+  t.stop(); t_pcg = t.elapsed();
 
   mkl_sparse_destroy(Amat);
   mkl_sparse_destroy(Gmat);
@@ -29,132 +49,622 @@ pcg::pcg(const SparseCSR &A, const std::vector<double> &b, double tol, int maxit
 
   
 void pcg::create_sparse(size_t N, size_t *cpt, size_t *rpt, double *datapt, SpMat &mat) {
-
-    size_t *pointerB = new size_t[N + 1]();
-    size_t *pointerE = new size_t[N + 1]();
-    size_t *update_intend_rpt = new size_t[cpt[N]]();
-    double *update_intend_datapt = new double[cpt[N]]();
-    for(size_t i = 0; i < N; i++)
-    {
-        size_t start = cpt[i];
-        size_t last = cpt[i + 1];
-        pointerB[i] = start;
-        for (size_t j = start; j < last; j++)
-        {
-            update_intend_datapt[j] = datapt[j];
-            update_intend_rpt[j] = rpt[j];
-        }
-        pointerE[i] = last;    
-
-    }
-    
-    mkl_sparse_d_create_csr(&mat, SPARSE_INDEX_BASE_ZERO, N, N, pointerB, pointerE, update_intend_rpt, update_intend_datapt);
-
-    //delete[] pointerB, pointerE, update_intend_rpt, update_intend_datapt;
+    mkl_sparse_d_create_csr(&mat, SPARSE_INDEX_BASE_ZERO, N, N, cpt, cpt+1, rpt, datapt);
 }
 
-
-void pcg::iteration(const SpMat *A, const double *b, SpMat *lap,
+void pcg::iteration(const SpMat *Amat, const double *b, SpMat *Gmat,
     std::vector<double> &x, double &relres, int &itr) 
 {
-    auto start = std::chrono::steady_clock::now();
-    auto end = std::chrono::steady_clock::now();
-    auto elapsed = end - start;
-
-
-    start = std::chrono::steady_clock::now();
     // set initial
-    x.resize(ps);
+    x.resize(N, 0);
 
     // residual
-    double *r = new double[ps]();
-    cblas_dcopy(ps, b, 1, r, 1);
-    // iterations
-    int n_iters = 0;
+    double *r = new double[N]();
+    double *z = new double[N]();
+    double *p = new double[N]();    
+    double *q = new double[N](); // q = A * p
 
+    Timer t; t.start();
 
-    // used for storing previous residual and preconditioner applied to r
-    double *prev_r = new double[ps]();
-    double *prev_cond = new double[ps]();
-    double *p = new double[ps]();
-    double *temp = new double[ps]();
-    double *q = new double[ps]();
-    while(cblas_dnrm2(ps, r, 1) > cblas_dnrm2(ps, b, 1) * tolerance && n_iters < this->maxSteps)
-    {
+    copy(b, r);
+    precond_solve(Gmat, r, z);
+    copy(z, p);
+    
+    nitr = 0; // iteration count
+    int stag = 0; // check stagation
+    double a1, a2, rz, nr;
+    double nb = norm(b);
+    double err = nb * tolerance;
+    while (nitr < maxSteps) {
         
-        this->precond_solve(lap, r, temp);
+      matvec(Amat, p, q);
+      
+      rz = dot(r, z);
+      a1 = rz / dot(p, q);
 
-        if (n_iters == 0)
-        {
-            cblas_dcopy(ps, temp, 1, p, 1);
-        }
-        else
-        {
-            double d1 = cblas_ddot(ps, r, 1, temp, 1);
-            double d2 = cblas_ddot(ps, prev_r, 1, prev_cond, 1);
-            cblas_dscal(ps, d1 / d2, p, 1);
-            cblas_daxpy(ps, 1, temp, 1, p, 1);
-        }
+      // check stagnation
+      if (std::abs(a1)*norm(p) < norm(x.data())*1e-15) stag ++;
+      else stag = 0;
 
-        
-        this->matrix_vector_product(A, p, q);
-        double d1 = cblas_ddot(ps, p, 1, r, 1);
-        double d2 = cblas_ddot(ps, p, 1, q, 1);
-        double alpha = d1 / d2;
-        cblas_daxpy(ps, alpha, p, 1, x.data(), 1);
+      axpy(a1, p, x.data());
+      axpy(-a1, q, r);
 
-        cblas_dcopy(ps, r, 1, prev_r, 1);
-        cblas_dcopy(ps, temp, 1, prev_cond, 1);
-        cblas_daxpy(ps, -alpha, q, 1, r, 1);
+      nr = norm(r);
+      if (nr < err || stag >= 3) break;
 
-        n_iters++;
-        //std::cout << "current iters: " << n_iters << " current residual: " << cblas_dnrm2(ps, r, 1) / cblas_dnrm2(ps, b, 1) << "\n";
+      precond_solve(Gmat, r, z);
+
+      a2 = dot(r, z) / rz;
+      xpay(z, a2, p);
+      
+      nitr++;
     }
-    end = std::chrono::steady_clock::now();
-    elapsed += end - start;
-    //std::cout << "total time: " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << " \n";
-    this->matrix_vector_product(A, x.data(), q);
-    cblas_daxpy(ps, -1, b, 1, q, 1);
-    relres = cblas_dnrm2(ps, q, 1) / cblas_dnrm2(ps, b, 1);
-    itr = n_iters;
-    //std::cout << "pcg reached a relative residual of " << cblas_dnrm2(ps, q, 1) / cblas_dnrm2(ps, b, 1) << " after " << n_iters << " iterations\n";
-    delete[] r;
-    delete[] prev_r;
-    delete[] prev_cond;
-    delete[] p;
-    delete[] temp;
-    delete[] q;
+
+    relres = nr / nb;
+    itr = nitr;
+    t.stop(); t_itr = t.elapsed();
+
+    // free memory
+    delete[] r, z, p, q;
 }
 
+void pcg::copy(const double *src, double *des) {
+    cblas_dcopy(N, src, 1, des, 1);
+}
+
+void pcg::axpy(double a, double *x, double *y) {
+    cblas_daxpy(N, a, x, 1, y, 1);
+}
+
+void pcg::xpay(double *x, double a, double *y) {
+    for (int i=0; i<N; i++) {
+      y[i] = x[i] + a*y[i];
+    }
+}
+
+double pcg::norm(const double *r) {
+    return cblas_dnrm2(N, r, 1);
+}
+
+double pcg::dot(double *a, double *b) {
+  return cblas_ddot(N, a, 1, b, 1);
+}
+
+void pcg::matvec(const SpMat *A, const double *b, double *q)
+{
+    timer.start();
+    mkl_sparse_d_mv(SPARSE_OPERATION_NON_TRANSPOSE, 1, *A, MDA, b, 0, q);
+    timer.stop(); t_matvec += timer.elapsed();
+}
 
 void pcg::matrix_vector_product(const SpMat *A, const double *b, double *q)
 {
-    matrix_descr des;
-    des.type = SPARSE_MATRIX_TYPE_GENERAL;
-    //des.type = SPARSE_MATRIX_TYPE_SYMMETRIC;
-    //des.mode = SPARSE_FILL_MODE_UPPER;
-    //des.diag = SPARSE_DIAG_NON_UNIT;
-    mkl_sparse_d_mv(SPARSE_OPERATION_NON_TRANSPOSE, 1, *A, des, b, 0, q);
+    timer.start();
+    mkl_sparse_d_mv(SPARSE_OPERATION_NON_TRANSPOSE, 1, *A, MDA, b, 0, q);
+    timer.stop(); t_matvec += timer.elapsed();
 }
 
-
-void pcg::precond_solve(SpMat *lap, const double *b, double *ret)
+void pcg::precond_solve(SpMat *Gmat, const double *r, double *x)
 {
+#if 0
     // lower solve
-    size_t N = ps;
-    double *x = new double[N]();
-    matrix_descr des;
-    des.type = SPARSE_MATRIX_TYPE_TRIANGULAR;
-    des.mode = SPARSE_FILL_MODE_UPPER;
-    des.diag = SPARSE_DIAG_NON_UNIT;
+    timer.start();
+    mkl_sparse_d_trsv(SPARSE_OPERATION_TRANSPOSE, 1, *Gmat, MDG, r, x);
+    timer.stop(); t_lower_solve += timer.elapsed();
+#else
+    // lower solve
+    this->copy(r, x);
+    timer.start();
+    //this->lower_solve_csc_serial(x);
+    //this->lower_solve_csc_parallel(x, 0, std::log2(nThreads), 0, S.size()-1, 0, nThreads);
+    this->lower_solve_csc_async(x, 0, std::log2(nThreads), 0, S.size()-1, 0, nThreads);
+    //this->lower_solve_csr_serial(x);
+    //this->lower_solve_csr_parallel(x, 0, std::log2(nThreads), 0, S.size()-1, 0, nThreads);
+    timer.stop(); t_lower_solve += timer.elapsed();
+    //std::cout<<"Finished lower solve."<<std::endl;
+#endif
 
-    mkl_sparse_d_trsv(SPARSE_OPERATION_TRANSPOSE, 1, *lap, des, b, x);
-
- 
     // upper triangular solve
-    mkl_sparse_d_trsv(SPARSE_OPERATION_NON_TRANSPOSE, 1, *lap, des, x, ret);
+#if 0 
+    // include '-lmkl_intel_ilp64' in linking flag
+    timer.start();
+    mkl_sparse_d_trsv(SPARSE_OPERATION_NON_TRANSPOSE, 1, *Gmat, MDG, temp, x);
+    timer.stop(); t_upper_solve += timer.elapsed();
+#else
 
+    timer.start();
+    this->upper_solve(x, 0, std::log2(nThreads), 0, S.size()-1, 0, nThreads);
+    timer.stop(); t_upper_solve += timer.elapsed();
+    //std::cout<<"Finished upper solve."<<std::endl;
+#endif
+}
 
-    delete[] x;
+//void pcg::transpose(SparseCSR &G, SparseCSR &Gt) {
+void pcg::transpose() {
+  unsigned nnz = G.rowPtr[G.N];
+  std::vector<size_t> rowPtr; rowPtr.resize(G.N+1, 0);
+  std::vector<size_t> colIdx; colIdx.resize(nnz);
+  std::vector<double> val; val.resize(nnz);
+
+  std::vector<int> rnnz(G.N, 0);
+  for (unsigned i=0; i<nnz; i++) {
+    rnnz[ G.colIdx[i] ]++;
+  }
+  for (int i=0; i<G.N; i++)
+    rowPtr[i+1] = rowPtr[i] + rnnz[i];
+  assert(rowPtr[G.N] == nnz);
+
+  for (int i=0; i<G.N; i++)
+    rnnz[i] = 0;
+
+  for (int c=0; c<G.N; c++) {
+    for (int i=G.rowPtr[c]; i<G.rowPtr[c+1]; i++) {
+      int r = G.colIdx[i];
+      double v = G.val[i];
+
+      int idx = rowPtr[r] + rnnz[r];
+      rnnz[r]++;
+
+      colIdx[idx] = c;
+      val[idx] = v;
+    }
+  }
+
+  Gt.init(rowPtr, colIdx, val);
+  //Gt.show("transpose");
+}
+
+void pcg::lower_solve_csr_serial(double *b) {
+  for (int r=0; r<Gt.N; r++) {
+    for (int i=Gt.rowPtr[r]; i<Gt.rowPtr[r+1]-1; i++) {
+      int c = Gt.colIdx[i];
+      double v = Gt.val[i];
+      b[r] -= b[c] * v;
+      assert(c < r);
+    }
+    b[r] /= Gt.val[ Gt.rowPtr[r+1]-1 ];
+    assert(r == Gt.colIdx[ Gt.rowPtr[r+1]-1 ]);
+  }
+}
+
+void pcg::lower_solve_csr_parallel(double *b, int depth, int target, 
+    int start, int total_size, int core_begin, int core_end)
+{
+
+    // pin to a core
+    if(sched_getcpu() != core_begin)
+    {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(core_begin, &cpuset);
+        sched_setaffinity(0, sizeof(cpuset), &cpuset);
+    }
+
+    /* base case */
+    if(target == depth)
+    {
+        auto time_s = std::chrono::steady_clock::now();
+        int  R0 = S.at(start);
+        int  R1 = S.at(start + total_size);
+        for (int r = R0; r < R1; r++)
+        {  
+            for (int i = Gt.rowPtr[r]; i < Gt.rowPtr[r+1]-1; i++) 
+            {
+                int    c = Gt.colIdx[i];
+                double v = Gt.val[i];
+                b[r] -= b[c] * v;
+                assert(c < r);
+            }
+            b[r] /= Gt.val[ Gt.rowPtr[r+1]-1 ];
+            assert(r == Gt.colIdx[ Gt.rowPtr[r+1]-1 ]);
+        }
+        auto time_e = std::chrono::steady_clock::now();
+        auto elapsed = time_e - time_s;
+        int  cpu_num = sched_getcpu();
+        std::cout << "depth: " << depth 
+          << " thread " << std::this_thread::get_id() 
+          << " cpu: " << cpu_num 
+          << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() 
+          << "\n";
+    }
+    else
+    {
+        /* recursive call */
+        int core_id = (core_begin + core_end) / 2;
+        
+#if 0
+        this->lower_solve_csr_parallel(b, depth + 1, target, (total_size - 1) / 2 + start, 
+            (total_size - 1) / 2, core_id, core_end);
+        
+#elif 0   
+        auto left = std::async(std::launch::async, &pcg::lower_solve_csr_parallel, this,
+            b, depth + 1, target, (total_size - 1) / 2 + start, (total_size - 1) / 2, 
+            core_id, core_end);
+
+#else
+        std::thread t(&pcg::lower_solve_csr_parallel, this,
+            b, depth + 1, target, (total_size - 1) / 2 + start, (total_size - 1) / 2, 
+            core_id, core_end);
+
+#endif
+
+        this->lower_solve_csr_parallel(b, depth + 1, target, start, (total_size - 1) / 2, 
+            core_begin, core_id);
+    
+        t.join();
+
+        /* separator portion */
+        auto time_s = std::chrono::steady_clock::now();
+        int  R0 = S.at(start + total_size - 1);
+        int  R1 = S.at(start + total_size);
+        for (int r = R0; r < R1; r++)
+        {  
+            for (int i = Gt.rowPtr[r]; i < Gt.rowPtr[r+1]-1; i++) 
+            {
+                int    c = Gt.colIdx[i];
+                double v = Gt.val[i];
+                b[r] -= b[c] * v;
+                assert(c < r);
+            }
+            b[r] /= Gt.val[ Gt.rowPtr[r+1]-1 ];
+            assert(r == Gt.colIdx[ Gt.rowPtr[r+1]-1 ]);
+        }
+        auto time_e = std::chrono::steady_clock::now();
+        auto elapsed = time_e - time_s;
+        int cpu_num = sched_getcpu();
+        std::cout << "depth(separator): " << depth 
+          << " thread " << std::this_thread::get_id() 
+          << " cpu: " << cpu_num  
+          << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() 
+          << " length: " << S.at(start + total_size) - S.at(start + total_size - 1) 
+          << "\n";
+
+    }
+}
+
+void pcg::lower_solve_csc_serial(double *b) {
+  for (int c=0; c<G.N; c++) {
+    assert(G.colIdx[G.rowPtr[c]] == c);
+    b[c] /= G.val[ G.rowPtr[c] ];
+    for (int i=G.rowPtr[c]+1; i<G.rowPtr[c+1]; i++) {
+      int    r = G.colIdx[i];
+      double v = G.val[i];
+      b[r] -= b[c] * v;
+    }
+  }
+}
+
+std::vector<nonzero> pcg::lower_solve_csc_parallel(double *b, int depth, int target, 
+    int start, int total_size, int core_begin, int core_end)
+{
+
+    // pin to a core
+    if(sched_getcpu() != core_begin)
+    {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(core_begin, &cpuset);
+        sched_setaffinity(0, sizeof(cpuset), &cpuset);
+    }
+
+    /* base case */
+    if(target == depth)
+    {
+        auto time_s = std::chrono::steady_clock::now();
+        std::vector<nonzero> spvec; spvec.reserve(40);
+        int  C0 = S.at(start);
+        int  C1 = S.at(start + total_size);
+        for (int c = C0; c < C1; c++)
+        {  
+            assert(c == G.colIdx[ G.rowPtr[c] ]);
+            b[c] /= G.val[ G.rowPtr[c] ];
+            for (int i = G.rowPtr[c]+1; i < G.rowPtr[c+1]; i++) 
+            {
+                int    r = G.colIdx[i];
+                double v = G.val[i];
+                if (r < C1) // current node
+                  b[r] -= b[c] * v;
+                else // ancester
+                  spvec.push_back( nonzero(r, b[c]*v) );
+                assert(r > c);
+            }
+        }
+        auto time_e = std::chrono::steady_clock::now();
+        auto elaNed = time_e - time_s;
+        int  cpu_num = sched_getcpu();
+        std::cout << "depth: " << depth 
+          << " thread " << std::this_thread::get_id() 
+          << " cpu: " << cpu_num 
+          << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(elaNed).count() 
+          << "\n";
+
+        return spvec;
+    }
+    else
+    {
+        /* recursive call */
+        int core_id = (core_begin + core_end) / 2;
+        
+#if 0
+        this->lower_solve(b, depth + 1, target, (total_size - 1) / 2 + start, (total_size - 1) / 2,
+            core_id, core_end);
+        
+#else   
+        auto left = std::async(std::launch::async, &pcg::lower_solve_csc_parallel, this,
+            b, depth + 1, target, (total_size - 1) / 2 + start, (total_size - 1) / 2, 
+            core_id, core_end);
+
+#endif
+        auto rvec = lower_solve_csc_parallel(b, depth + 1, target, start, (total_size - 1) / 2, 
+            core_begin, core_id);
+        
+        /* separator portion */
+        auto time_s = std::chrono::steady_clock::now();
+        int  C0 = S.at(start + total_size - 1);
+        int  C1 = S.at(start + total_size);
+
+        // concatenate two vectors
+        auto spvec = left.get();
+        spvec.reserve(spvec.size()+rvec.size());
+        spvec.insert(spvec.end(), rvec.begin(), rvec.end());
+        // sort to descending order
+        std::sort(spvec.begin(), spvec.end(), nonzero::greater);
+        // merge nonzero values
+        int i=0;
+        for (unsigned j=1; j<spvec.size(); j++) {
+          if (spvec[i] == spvec[j]) spvec[i].value += spvec[j].value;
+          else {
+            assert(spvec[i].row > spvec[j].row);
+            i++;
+            spvec[i] = spvec[j];
+          }
+        }
+        // add to right-hand-side
+        for (; i>=0; i--) {
+          if (spvec[i].row < C1) b[ spvec[i].row ] -= spvec[i].value;
+          else break;
+        }
+        spvec.resize(i+1);
+
+        for (int c = C0; c < C1; c++)
+        {  
+            assert(c == G.colIdx[ G.rowPtr[c] ]);
+            b[c] /= G.val[ G.rowPtr[c] ];
+            for (int i = G.rowPtr[c]+1; i < G.rowPtr[c+1]; i++) 
+            {
+                int    r = G.colIdx[i];
+                double v = G.val[i];
+                if (r < C1) // current node
+                  b[r] -= b[c] * v;
+                else // ancester
+                  spvec.push_back( nonzero(r, b[c]*v) );
+                assert(r > c);
+            }
+        }
+        auto time_e = std::chrono::steady_clock::now();
+        auto elaNed = time_e - time_s;
+        
+        int cpu_num = sched_getcpu();
+        std::cout << "depth(separator): " << depth 
+          << " thread " << std::this_thread::get_id() 
+          << " cpu: " << cpu_num  
+          << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(elaNed).count() 
+          << " length: " << S.at(start + total_size) - S.at(start + total_size - 1) 
+          << "\n";
+
+        return spvec;
+    }
+}
+
+void pcg::lower_solve_csc_async(double *b, int depth, int target, 
+    int start, int total_size, int core_begin, int core_end)
+{
+
+    // pin to a core
+    if(sched_getcpu() != core_begin)
+    {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(core_begin, &cpuset);
+        sched_setaffinity(0, sizeof(cpuset), &cpuset);
+    }
+
+    /* base case */
+    if(target == depth)
+    {
+        auto time_s = std::chrono::steady_clock::now();
+        int  C0 = S.at(start);
+        int  C1 = S.at(start + total_size);
+        assert(C0>=0 && C1>=0);
+        for (int c = C0; c < C1; c++)
+        {  
+            assert(c == G.colIdx[ G.rowPtr[c] ]);
+            b[c] /= G.val[ G.rowPtr[c] ];
+            for (size_t i = G.rowPtr[c]+1; i < G.rowPtr[c+1]; i++) 
+            {
+                int    r = G.colIdx[i];
+                double v = G.val[i];
+                  
+                b[r] -= b[c] * v;
+                if (r <= c) std::cout<<"\n\tr="<<r<<", c="<<c<<std::endl;
+                assert(r > c);
+            }
+        }
+        auto time_e = std::chrono::steady_clock::now();
+        auto elapsed = time_e - time_s;
+        //int  cpu_num = sched_getcpu();
+        //std::cout << "depth: " << depth 
+          //<< " thread " << std::this_thread::get_id() 
+          //<< " cpu: " << cpu_num 
+          //<< " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() 
+          //<< "\n";
+
+    }
+    else
+    {
+        /* recursive call */
+        int core_id = (core_begin + core_end) / 2;
+        
+#if 0
+        this->lower_solve(b, depth + 1, target, (total_size - 1) / 2 + start, (total_size - 1) / 2,
+            core_id, core_end);
+       
+#elif 1
+        std::thread t(&pcg::lower_solve_csc_async, this,
+            b, depth + 1, target, (total_size - 1) / 2 + start, (total_size - 1) / 2, 
+            core_id, core_end);
+
+#else   
+        auto left = std::async(std::launch::async, &pcg::lower_solve_csc_async, this,
+            b, depth + 1, target, (total_size - 1) / 2 + start, (total_size - 1) / 2, 
+            core_id, core_end);
+
+#endif
+
+        lower_solve_csc_async(b, depth + 1, target, start, (total_size - 1) / 2, 
+            core_begin, core_id);
+        t.join();
+        //left.wait();
+        
+        /* separator portion */
+        auto time_s = std::chrono::steady_clock::now();
+        int  C0 = S.at(start + total_size - 1);
+        int  C1 = S.at(start + total_size);
+        for (int c = C0; c < C1; c++)
+        {  
+            assert(c == G.colIdx[ G.rowPtr[c] ]);
+            b[c] /= G.val[ G.rowPtr[c] ];
+            for (size_t i = G.rowPtr[c]+1; i < G.rowPtr[c+1]; i++) 
+            {
+                int    r = G.colIdx[i];
+                double v = G.val[i];
+                  
+                b[r] -= b[c] * v;
+                assert(r > c);
+            }
+        }
+        auto time_e = std::chrono::steady_clock::now();
+        auto elapsed = time_e - time_s;
+        //int cpu_num = sched_getcpu();
+        //std::cout << "depth(separator): " << depth 
+          //<< " thread " << std::this_thread::get_id() 
+          //<< " cpu: " << cpu_num  
+          //<< " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() 
+          //<< " length: " << S.at(start + total_size) - S.at(start + total_size - 1) 
+          //<< "\n";
+
+    }
+}
+
+void pcg::upper_solve(double *b, int depth, int target, 
+    int start, int total_size, int core_begin, int core_end)
+{
+
+    // pin to a core
+    if(sched_getcpu() != core_begin)
+    {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(core_begin, &cpuset);
+        sched_setaffinity(0, sizeof(cpuset), &cpuset);
+    }
+
+    /* base case */
+    if(target == depth)
+    {
+        auto time_s = std::chrono::steady_clock::now();
+        int  R0 = S.at(start);
+        int  R1 = S.at(start + total_size);
+        for (int r = R1-1; r >= R0; r--)
+        {  
+            assert(r == G.colIdx[ G.rowPtr[r] ]);
+            for (size_t i = G.rowPtr[r]+1; i < G.rowPtr[r+1]; i++) 
+            {
+                int    c = G.colIdx[i];
+                double v = G.val[i];
+                b[r] -= b[c] * v;
+                assert(c > r);
+            }
+            b[r] /= G.val[ G.rowPtr[r] ];
+        }
+        auto time_e = std::chrono::steady_clock::now();
+        auto elapsed = time_e - time_s;
+        //int  cpu_num = sched_getcpu();
+        //std::cout << "depth: " << depth 
+          //<< " thread " << std::this_thread::get_id() 
+          //<< " cpu: " << cpu_num 
+          //<< " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(elaNed).count() 
+          //<< "\n";
+    }
+    else
+    {
+        /* separator portion */
+        auto time_s = std::chrono::steady_clock::now();
+        int  R0 = S.at(start + total_size - 1);
+        int  R1 = S.at(start + total_size);
+        for (size_t r = R1-1; r >= R0; r--)
+        {
+            assert(r == G.colIdx[ G.rowPtr[r] ]);
+            for (size_t i = G.rowPtr[r]+1; i < G.rowPtr[r+1]; i++) 
+            {
+                int    c = G.colIdx[i];
+                double v = G.val[i];
+                b[r] -= b[c] * v;
+                assert(c > r);
+            }
+            b[r] /= G.val[ G.rowPtr[r] ];
+        }
+        auto time_e = std::chrono::steady_clock::now();
+        auto elapsed = time_e - time_s;
+        
+        //int cpu_num = sched_getcpu();
+        //std::cout << "depth(separator): " << depth 
+          //<< " thread " << std::this_thread::get_id() 
+          //<< " cpu: " << cpu_num  
+          //<< " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(elaNed).count() 
+          //<< " length: " << S.at(start + total_size) - S.at(start + total_size - 1) 
+          //<< "\n";
+
+        /* recursive call */
+        int core_id = (core_begin + core_end) / 2;
+        
+#if 0
+        this->upper_solve(b, depth + 1, target, (total_size - 1) / 2 + start, (total_size - 1) / 2,
+            core_id, core_end);
+        
+#elif 0   
+        auto left = std::async(std::launch::async, &pcg::upper_solve, this,
+            b, depth + 1, target, (total_size - 1) / 2 + start, (total_size - 1) / 2, 
+            core_id, core_end);
+
+#else
+        std::thread t(&pcg::upper_solve, this,
+            b, depth + 1, target, (total_size - 1) / 2 + start, (total_size - 1) / 2, 
+            core_id, core_end);
+
+#endif
+        //auto right = std::async(std::launch::async, &pcg::upper_solve, this,
+        //    b, depth + 1, target, start, (total_size - 1) / 2, 
+        //    core_id, core_end);
+
+        this->upper_solve(b, depth + 1, target, start, (total_size - 1) / 2, 
+            core_begin, core_id);
+    
+        t.join();
+    }
+}
+
+pcg::~pcg() {
+  std::cout<<"\n-----------------------"
+    <<"\nPCG: "<<t_pcg
+    <<"\niteration: "<<t_itr
+    <<"\n\tmatvec: "<<t_matvec
+    <<"\n\tlower solve: "<<t_lower_solve
+    <<"\n\tupper solve: "<<t_upper_solve
+    <<"\n\trest: "<<t_itr-t_matvec-t_lower_solve-t_upper_solve
+    <<"\n\tlower solve/nitr: "<<t_lower_solve/(nitr+1)
+    <<"\n\tupper solve/nitr: "<<t_upper_solve/(nitr+1)
+    <<"\n-----------------------\n"
+    <<std::endl;
 }
 

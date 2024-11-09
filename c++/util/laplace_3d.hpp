@@ -3,7 +3,7 @@
 
 #include <cassert>
 #include <vector>
-#include "../sparse.hpp"
+#include "sparse.hpp"
 
 template <typename T>
 void laplace_3d(size_t n, std::vector<size_t> &rowPtr, std::vector<size_t> &colIdx, 
@@ -64,6 +64,18 @@ void laplace_3d(size_t n, std::vector<size_t> &rowPtr, std::vector<size_t> &colI
 #endif
 }
 
+
+SparseCSR laplace_3d(int n) {
+  std::vector<size_t> rowPtr, colIdx;
+  std::vector<double> val;
+  
+  std::cout<<"before laplace_3d ..."<<std::endl;
+  laplace_3d(n, rowPtr, colIdx, val);
+  std::cout<<"after laplace_3d ..."<<std::endl;
+  
+  SparseCSR A(rowPtr, colIdx, val, false);
+  return A;
+}
 
 #endif
 

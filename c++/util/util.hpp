@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <iostream>
-#include "../sparse.hpp"
+#include "sparse.hpp"
 
 
 struct Rearrange {
@@ -28,8 +28,6 @@ struct Rearrange {
     }
 };
 
-
-SparseCSR laplace_3d(int);
 
 void reorder(const SparseCSR &A, const std::vector<size_t> &permutation, SparseCSR &);
 

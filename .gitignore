@@ -6,3 +6,11 @@
 bak/*
 *.bak
 
+driver
+driver_parallel
+
+*.txt
+*.job
+*.err
+*.sh
+

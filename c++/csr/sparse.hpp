@@ -17,8 +17,13 @@ public:
   void init(const std::vector<size_t>&, const std::vector<size_t>&, const std::vector<double>&,
       bool mem=true);
 
+  void read_csr_file(std::string filename);
+  void read_mkt_file(std::string filename);
+
   size_t size() const;
   size_t nnz() const;
+
+  void show(std::string) const;
 
   ~SparseCSR();
 

@@ -1,18 +1,29 @@
-EXE = driver driver_parallel
-OBJS := $(patsubst %.cpp,%.o,$(wildcard *.cpp rchol/*.cpp rchol_lap/*.cpp util/*.cpp))
-OBJS := $(filter-out ex_laplace.o ex_laplace_parallel.o,$(OBJS))
+#EXE = driver driver_parallel
+EXE = driver_parallel
+OBJS := $(patsubst %.cpp,%.o,$(wildcard *.cpp rchol/*.cpp rchol_lap/*.cpp util/*.cpp csr/*.cpp))
+OBJS := $(filter-out ex_laplace.o ex_laplace_parallel.o csr/driver.o,$(OBJS))
 
-CFLAG = -Wall -O3 -Irchol/ -Irchol_lap/ -Iutil/
+#CFLAG = -Wall -g -Irchol/ -Irchol_lap/ -Iutil/ -Icsr/
+CFLAG = -Wall -O3 -xHost -Irchol/ -Irchol_lap/ -Iutil/ -Icsr/
 LDFLAG = -lmkl_intel_ilp64 -mkl
 
 
-METIS_INC = $(TACC_METIS_INC)
-METIS_LIB = $(TACC_METIS_LIB)
+METIS_INC = /home1/06108/chaochen/libs/metis_64bit/include
+METIS_LIB = /home1/06108/chaochen/libs/metis_64bit/build/Linux-x86_64/libmetis
+
+#MTMETIS_INC = /home1/06108/chaochen/libs/mt-metis-0.7.2/include
+#MTMETIS_LIB = /home1/06108/chaochen/libs/mt-metis-0.7.2/build/Linux-x86_64/lib
+
+#METIS_INC = $(TACC_METIS_INC)
+#METIS_LIB = $(TACC_METIS_LIB)
 
 # METIS is required for parallel
 ifneq ($(and $(METIS_INC),$(METIS_LIB)),)
-CFLAG += -I$(METIS_INC)
-LDFLAG += -L$(METIS_LIB) -lmetis
+CFLAG += -I$(METIS_INC) -I$(AMD_INC)
+LDFLAG += -L$(METIS_LIB) -lmetis -L$(AMD_LIB) -lamd
+else ifneq ($(and $(MTMETIS_INC),$(MTMETIS_LIB)),)
+CFLAG += -I$(MTMETIS_INC) -I$(AMD_INC)
+LDFLAG += -L$(MTMETIS_LIB) -lmtmetis -L$(AMD_LIB) -lamd
 else
 POBJ = rchol/find_separator.o rchol/rchol_parallel.o
 OBJS := $(filter-out $(POBJ),$(OBJS))
@@ -37,10 +48,12 @@ all: $(EXE)
 driver: ex_laplace.o $(OBJS)
 	icpc $^ -o $@ $(CFLAG) $(LDFLAG)
 	
-driver_parallel: ex_laplace_parallel.o $(OBJS)
+driver_parallel: ex_parallel.o $(OBJS)
 	icpc $^ -o $@ $(CFLAG) $(LDFLAG)
 	
+run: $(EXE)
+	./$(EXE)
 	
 clean:
-	rm -f driver* *.o rchol/*.o rchol_lap/*.o util/*.o
+	rm -f $(EXE) *.o rchol/*.o rchol_lap/*.o util/*.o csr/*.o
 
