@@ -17,7 +17,9 @@ void reorder(const SparseCSR &A, std::vector<size_t> &rowPtr, std::vector<size_t
     size_t first = A.rowPtr[permutation[i]];
     size_t last = A.rowPtr[permutation[i] + 1];
     rowPtr.push_back(rowPtr[rowPtr.size()- 1] + last - first);
-    Rearrange arrange[last - first];
+    std::vector<Rearrange> arrange_vec(last - first);
+    auto arrange = arrange_vec.data();
+    // Rearrange arrange[last - first];
     // permute elements in each row
     for(size_t j = first; j < last; j++)
     {

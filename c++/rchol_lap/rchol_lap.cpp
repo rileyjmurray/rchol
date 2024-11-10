@@ -83,8 +83,7 @@ bool compare (Sample i, Sample j);
 
 
 
-void rchol_lap(Sparse_storage_input *input, Sparse_storage_output *output, std::vector<int> &partition, int thread)
-{
+void rchol_lap(Sparse_storage_input *input, Sparse_storage_output *output, std::vector<int> &partition, int thread) {
 
     //the CPU we whant to use
     int cpu = 0;
@@ -281,26 +280,19 @@ recursive_calculation(std::vector<int> &partition, int depth, std::vector<edges>
 
         /* separator portion */
         time_s = std::chrono::steady_clock::now();
-        for (int i = partition.at(start + total_size - 1); i < partition.at(start + total_size); i++)
-        {
+        for (int i = partition.at(start + total_size - 1); i < partition.at(start + total_size); i++) {
             
             int current = i;
             edges *b = &lap.at(current);
-            if(b->nz - b->split > 0)
-            {
-                
+            if(b->nz - b->split > 0) {
                 linear_update(b);
             }
 
-            
             diagpt[current] = random_sampling(&lap.at(current), lap, current, sep_edges, l_bound, r_bound);
             //density += lap.at(i)->nz;
         }
         time_e = std::chrono::steady_clock::now();
         elapsed = time_e - time_s;
-        //int cpu_num = sched_getcpu();
-        //std::cout << "depth(separator): " << depth << " thread " << std::this_thread::get_id() << " cpu: " << cpu_num  << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << " length: " << partition.at(start + total_size) - partition.at(start + total_size - 1) << " nztotal " << density << " before: " << before_density / (partition.at(start + total_size) - partition.at(start + total_size - 1)) << " density: " << density / (partition.at(start + total_size) - partition.at(start + total_size - 1)) << "\n";
-		
         return sep_edges;
     }
     
@@ -314,8 +306,7 @@ void coalesce(std::vector<edges> &lap, size_t *cpt, size_t *rpt, double *datapt,
     cpt[0] = 0;
     
     
-    for (int i = 0; i < m; i++)
-    {
+    for (int i = 0; i < m; i++) {
         edges *toCopy = &lap.at(i);
         int nz = toCopy->nz;
         int *irow = toCopy->i;
@@ -392,15 +383,16 @@ real random_sampling(edges *cur, std::vector<edges> &lap, int curcol,
     // run only if at least 3 elements, including diagonal
 
     
-    if (nz > 2)
-    {
-        
+    if (nz > 2) {
         int size = nz - 1;
 
         // create sample vector for sampling
-        Sample sample[size];
+        // Sample sample[size];
+        std::vector<Sample> sample_vec(size);
+        auto sample = sample_vec.data();
         // cumulative sum
-        real cumsum[size];
+        std::vector<real> cumsum_vec(size);
+        auto cumsum = cumsum_vec.data();
         real csum = 0.0;
         for (int i = 0; i < size; i++)
         {
@@ -457,7 +449,8 @@ void linear_update(edges *b)
 {
     // sort
     int size = b->nz;
-    Sample sample[size];
+    std::vector<Sample> sample_vec(size);
+    auto sample = sample_vec.data();
     for (int i = 0; i < size; i++)
     {
         sample[i].row = b->i[i];
@@ -569,5 +562,4 @@ bool compare (Sample i, Sample j)
 {
     return (i.data < j.data);
 }
-
 

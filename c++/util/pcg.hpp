@@ -6,8 +6,6 @@
 
 #define MKL_INT size_t
 #include "mkl_spblas.h"
-#include "mkl.h"
-#include "mkl_types.h"
 
 typedef sparse_matrix_t SpMat;
   

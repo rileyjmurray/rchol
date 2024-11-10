@@ -7,6 +7,7 @@
 #include "util.hpp"
 #include "pcg.hpp"
 #include "timer.hpp"
+#include "laplace_3d.hpp"
 
 
 int main(int argc, char *argv[]) {
@@ -42,7 +43,8 @@ int main(int argc, char *argv[]) {
   std::vector<double> x;
 
   t.start();
-  pcg(A, b, tol, maxit, G, x, relres, itr);
+  std::vector<int> S{};
+  pcg(A, b, S, 1, tol, maxit, G, x, relres, itr);
   t.stop();
 
   std::cout<<"Solve time: "<<t.elapsed()<<std::endl;

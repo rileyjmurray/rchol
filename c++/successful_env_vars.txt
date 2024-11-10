@@ -1,0 +1,108 @@
+At the start of a terminal session ...
+
+. /home/rjmurr/spack/share/spack/setup-env.sh
+spack load cmake
+spack load intel-oneapi-mkl
+spack load googletest
+spack load gcc@12.3
+spack load intel-tbb
+spack load metis
+spack load intel-oneapi-compilers
+source $MKLROOT/../../setvars.sh
+
+export SPACK_GCC_HOME=~/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/gcc-12.3.0-oshnrnhi6bn7jacta7jjdsgmtndsirse
+export METIS_HOME=~/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/metis-5.1.0-55zxhd477b2nmgomzph5fhwbgi6bctlv
+
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${SPACK_GCC_HOME}/lib64/
+# export CPATH=${SPACK_GCC_HOME}/lib/gcc/x86_64-pc-linux-gnu/12.3.0/include/:$CPATH
+# export CPATH=${SPACK_GCC_HOME}/lib/gcc/x86_64-pc-linux-gnu/12.3.0/include-fixed/:$CPATH
+
+export METIS_INC=${METIS_HOME}/include
+export METIS_LIB=${METIS_HOME}/lib
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:$METIS_LIB
+
+export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/rjmurr/laps/rchol-repo/SuiteSparse/lib/cmake/
+
+# Notes about updates to environment variables
+#   1. The LD_LIBRARY_PATH update was because of a runtime error along the lines of 
+#       "/lib64/libstdc++.so.6: version `CXXABI_1.3.13' not found"
+#
+#   2. Not sure if loading gcc@12.3 should be strictly necessary, since now we use ICC.
+#      The CPATH and LD_LIBRARY_PATH updates above probably have analogs for ICC.
+#
+#           --> The CPATH updates aren't necessary if the configuration file for ICPX points
+#               to gcc 12.3 for its gcc toolchain. By default it was pointing to a different
+#               gcc toolchain.
+#
+#   3. Metis variables are referenced in the Makefile.
+#
+
+------------------------------------------------------------------------------------------------------------------------------------------
+
+cmake -DCMAKE_BINARY_DIR=`pwd` -DCMAKE_BUILD_TYPE=Release -DMETIS_INC=$METIS_INC -DMETIS_LIB=$METIS_LIB -DCMAKE_INSTALL_PREFIX=`pwd`/../rchol-install ../rchol-repo/c++
+
+------------------------------------------------------------------------------------------------------------------------------------------
+
+[rjmurr@sn1 c++]$ echo $PATH | tr : '\n'
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/mkl/2024.0/bin/
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/compiler/2024.0/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-compilers-2024.1.0-d5vvtmf3viz6dgjka75ziwrvguyyknoz/compiler/2024.1/opt/oclfpga/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-compilers-2024.1.0-d5vvtmf3viz6dgjka75ziwrvguyyknoz/compiler/2024.1/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/metis-5.1.0-55zxhd477b2nmgomzph5fhwbgi6bctlv/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/metis-5.1.0-55zxhd477b2nmgomzph5fhwbgi6bctlv/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/hwloc-2.9.1-vq6pokfwq7e3auhzb5tlsb2unt2nsd3n/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/ncurses-6.5-npssmqgl4mknclfqhszhgmtnhhbnloyi/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/libxml2-2.10.3-m4htrijybxrcd5wk6nyrqj7egueqlz3q/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/xz-5.4.6-t24lzmomrflxgidirvvqlnmgaulspixx/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/libiconv-1.17-3farjxr2ucbhdqyq4ktflyzfn2l2bslc/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/gcc-12.3.0-oshnrnhi6bn7jacta7jjdsgmtndsirse/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/binutils-2.42-i7kms4hqjiiayc6uioxvt5ithqqjzejh/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/gcc-12.3.0-oshnrnhi6bn7jacta7jjdsgmtndsirse/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/binutils-2.42-i7kms4hqjiiayc6uioxvt5ithqqjzejh/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/zstd-1.5.6-p3xsnyblxwpnguwsdmstgugref5yrkij/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/mkl/2024.0/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/hwloc-2.9.1-vq6pokfwq7e3auhzb5tlsb2unt2nsd3n/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/ncurses-6.5-npssmqgl4mknclfqhszhgmtnhhbnloyi/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/libxml2-2.10.3-m4htrijybxrcd5wk6nyrqj7egueqlz3q/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/xz-5.4.6-t24lzmomrflxgidirvvqlnmgaulspixx/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/libiconv-1.17-3farjxr2ucbhdqyq4ktflyzfn2l2bslc/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/cmake-3.27.9-4au6ovzfkmhe7i4ufnu2b2hmus45keoe/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/cmake-3.27.9-4au6ovzfkmhe7i4ufnu2b2hmus45keoe/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/ncurses-6.5-npssmqgl4mknclfqhszhgmtnhhbnloyi/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/gmake-4.4.1-khay2z2vebh6levldwtgmukq555hcnrq/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/curl-8.7.1-bs6zorrc5ysdn5wqvvht7oas3zqy2yeu/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/openssl-3.3.0-m2wkxh4df3lgsw5e6jvggbilopdkbzc2/bin
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/nghttp2-1.57.0-kiayafq4rigcnrt7xtyczvzrucbcxtpy/bin
+/home/rjmurr/spack/bin
+/home/rjmurr/.local/bin
+/home/rjmurr/bin
+/opt/spack/rhel8_x86/stack-2023-03/spack/opt/spack/linux-rhel8-zen/gcc-8.5.0/gcc-12.2.0-7kfebis6lhh3nju7wsvp73qf7hxz23mk/bin
+/usr/local/bin
+/usr/bin
+/usr/local/sbin
+/usr/sbin
+
+[rjmurr@sn1 c++]$ echo $LIBRARY_PATH | tr : '\n'
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/tbb/2021.11/env/../lib/intel64/gcc4.8
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/mkl/2024.0/lib/
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/compiler/2024.0/lib
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-compilers-2024.1.0-d5vvtmf3viz6dgjka75ziwrvguyyknoz/compiler/2024.1/lib
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/mkl/2024.0/lib/
+
+[rjmurr@sn1 c++]$ echo $LD_LIBRARY_PATH | tr : '\n'
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/tbb/2021.11/env/../lib/intel64/gcc4.8
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/mkl/2024.0/lib
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/compiler/2024.0/opt/compiler/lib
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/compiler/2024.0/lib
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-compilers-2024.1.0-d5vvtmf3viz6dgjka75ziwrvguyyknoz/compiler/2024.1/opt/oclfpga/host/linux64/lib
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-compilers-2024.1.0-d5vvtmf3viz6dgjka75ziwrvguyyknoz/compiler/2024.1/opt/compiler/lib
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-compilers-2024.1.0-d5vvtmf3viz6dgjka75ziwrvguyyknoz/compiler/2024.1/lib
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/mkl/2024.0/lib
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/metis-5.1.0-55zxhd477b2nmgomzph5fhwbgi6bctlv/lib
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/gcc-12.3.0-oshnrnhi6bn7jacta7jjdsgmtndsirse/lib64/
+
+[rjmurr@sn1 c++]$ echo $CPATH | tr : '\n'
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/tbb/2021.11/env/../include
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/mkl/2024.0/include
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-compilers-2024.1.0-d5vvtmf3viz6dgjka75ziwrvguyyknoz/compiler/2024.1/opt/oclfpga/include
+/home/rjmurr/spack/opt/spack/linux-rhel8-zen3/gcc-12.2.0/intel-oneapi-mkl-2024.0.0-kohgezccb5wce5t6nsr2kbp2xf5zulc3/mkl/2024.0/include
