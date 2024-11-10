@@ -21,6 +21,8 @@ export METIS_INC=${METIS_HOME}/include
 export METIS_LIB=${METIS_HOME}/lib
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:$METIS_LIB
 
+export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/rjmurr/laps/rchol-repo/SuiteSparse/lib/cmake/
+
 # Notes about updates to environment variables
 #   1. The LD_LIBRARY_PATH update was because of a runtime error along the lines of 
 #       "/lib64/libstdc++.so.6: version `CXXABI_1.3.13' not found"

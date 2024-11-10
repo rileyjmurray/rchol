@@ -3,12 +3,13 @@ cmake_minimum_required(VERSION 3.27)
 project(rchol)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
 #############################################
 # Main library 
 #############################################
 
-file(GLOB_RECURSE ALL_RChol_LIBRARY_SOURCES "sparse.cpp" "rchol/*.cpp" "rchol_lap/*.cpp" "util/*.cpp")
+file(GLOB_RECURSE ALL_RChol_LIBRARY_SOURCES "rchol/*.cpp" "rchol_lap/*.cpp" "util/*.cpp" "csr/*.cpp")
 
 add_library(RChol STATIC ${ALL_RChol_LIBRARY_SOURCES})  # Change to SHARED if you want a shared library
 if(DEFINED TBBROOT)
@@ -18,9 +19,11 @@ target_include_directories(RChol PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rchol>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rchol_lap>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/util>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/csr>
 )
+find_package(AMD REQUIRED)
 target_link_libraries(RChol PRIVATE mkl_intel_ilp64 mkl_tbb_thread mkl_core pthread m dl)
+target_link_libraries(RChol PUBLIC SuiteSparse::AMD)
 
 # Check for METIS
 if(DEFINED METIS_INC AND DEFINED METIS_LIB)
@@ -50,7 +53,7 @@ file(GLOB_RECURSE HEADER_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/rchol/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/rchol_lap/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/util/*.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/sparse.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csr/*.hpp"
 )
 install(FILES ${HEADER_FILES}
     DESTINATION ${CMAKE_INSTALL_PREFIX}/include/RChol
@@ -80,13 +83,13 @@ install(FILES
 # Executables
 #############################################
 
-add_executable(driver ex_laplace.cpp)
-target_compile_options(driver PRIVATE -Wall -O3)
-target_link_libraries(driver RChol)
+# add_executable(driver ex_laplace.cpp)
+# target_compile_options(driver PRIVATE -Wall -O3)
+# target_link_libraries(driver RChol)
 
 # Check for METIS for driver_parallel
 if(DEFINED METIS_INC AND DEFINED METIS_LIB)
-    add_executable(driver_parallel ex_laplace_parallel.cpp)
+    add_executable(driver_parallel ex_parallel.cpp)
     target_compile_options(driver_parallel PRIVATE -Wall -O3)
     target_link_libraries(driver_parallel RChol)
 else()

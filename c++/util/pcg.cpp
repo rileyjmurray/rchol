@@ -1,19 +1,21 @@
 #include "pcg.hpp"
 
-// #include "mkl_cblas.h"
-// #include "mkl_types.h"
+
+#include "mkl.h"
 #include <iostream>
 #include <cassert>
 #include <cmath>
 #include <future>
 #include <algorithm>
+#include <thread>
+
 
 pcg::pcg(const SparseCSR &A, const std::vector<double> &b, 
     const std::vector<int> &S, int nt, double tol, int maxit,
     const SparseCSR &G, std::vector<double> &x, double &relres, int &itr) {
 
-  std::cout<<"MKL threads: "<<mkl_get_max_threads()<<std::endl;
-  std::cout<<"Sparse solve threads: "<<S.size()/2<<std::endl;
+  std::cout<<"MKL threads: " << mkl_get_max_threads() << std::endl;
+  std::cout<<"Sparse solve threads: " << S.size()/2 << std::endl;
 
   this->G = G; //this->transpose();
   this->S = S; this->S.back()--; // remove artifitial vertex
@@ -107,7 +109,10 @@ void pcg::iteration(const SpMat *Amat, const double *b, SpMat *Gmat,
     t.stop(); t_itr = t.elapsed();
 
     // free memory
-    delete[] r, z, p, q;
+    delete[] r;
+    delete[] z;
+    delete[] p;
+    delete[] q;
 }
 
 void pcg::copy(const double *src, double *des) {
