@@ -6,7 +6,7 @@ The underlying algorithm is based on  [Daniel Spielman's](http://www.cs.yale.edu
 
 The corresponding paper that describes the details can be found [here](https://arxiv.org/abs/2011.07769). 
 
-*Dependencies:*  The only dependency is the [METIS library](http://glaros.dtc.umn.edu/gkhome/metis/metis/overview).  METIS is required for shared-memory parallelism. 
+*Dependencies:*  RChol depends on METIS and on SuiteSparse's AMD reordering package.
 
 # Directory structure
 
@@ -16,13 +16,13 @@ The corresponding paper that describes the details can be found [here](https://a
 
 At each directory, please check the README and makefile files.
 
-# Authors
+# Original authors
 Tianyu Liang  
 Chao Chen (chenchao.nk@gmail.com)  
 George Biros (advisor)  
 
 # Funding
-This project is partially funded by NSF award CCF-1817048; and  by the U.S. Department of Energy, Office of Science, Office of Advanced Scientific Computing Research, Applied Mathematics program under Award Number DE-SC0019393, by the U.S. Department of Energy, National Nuclear Security Administration Award Number DE-NA000396 (PSAAP III).  Computing time on the Texas Advanced Computing Centers Stampede system was provided by an allocation from TACC and the NSF. 
+This project was partially funded by NSF award CCF-1817048; and  by the U.S. Department of Energy, Office of Science, Office of Advanced Scientific Computing Research, Applied Mathematics program under Award Number DE-SC0019393, by the U.S. Department of Energy, National Nuclear Security Administration Award Number DE-NA000396 (PSAAP III).  Computing time on the Texas Advanced Computing Centers Stampede system was provided by an allocation from TACC and the NSF. 
 
 
 
