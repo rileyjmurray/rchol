@@ -6,6 +6,25 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
 #############################################
+# NOTE!
+#
+#   Any library that consumes RChol currently
+#   needs to include the following lines in
+#   its CMakeLists.txt before its call to
+#   find_package(RChol REQUIRED) ...
+#
+#   message(STATUS "Checking for SuiteSparse::AMD ... ")
+#   find_package(AMD REQUIRED)
+#   include_directories(${AMD_INCLUDE_DIRS})
+#   message(STATUS "AMD include directories: ${AMD_INCLUDE_DIRS}")
+#   message(STATUS "Done checking for SuiteSparse::AMD.")
+#
+# TODO: update this build infrastructure so that isn't
+# necessary.
+#
+#############################################
+
+#############################################
 # Main library 
 #############################################
 
@@ -22,8 +41,8 @@ target_include_directories(RChol PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/csr>
 )
 find_package(AMD REQUIRED)
-target_link_libraries(RChol PRIVATE mkl_intel_ilp64 mkl_tbb_thread mkl_core pthread m dl)
-target_link_libraries(RChol PUBLIC SuiteSparse::AMD)
+target_link_libraries(RChol PRIVATE mkl_intel_ilp64 mkl_tbb_thread mkl_core pthread m SuiteSparse::AMD dl)
+# ^ For reasons that I don't understand, we need to find_package(AMD), but link_libraries(SuiteSparse::AMD) ...
 
 # Check for METIS
 if(DEFINED METIS_INC AND DEFINED METIS_LIB)
